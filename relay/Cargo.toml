@@ -32,6 +32,7 @@ serde_json = "1.0.127"
 thiserror = "1.0.63"
 tracing = "0.1.40"
 bytes = "1.7.1"
+public-ip-address = "0.3.2"
 
 [features]
 search = ["nostr-db/search"]

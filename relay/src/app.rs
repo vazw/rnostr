@@ -1,4 +1,6 @@
-use crate::{setting::SettingWrapper, Extension, Extensions, Result, Server, Setting};
+use crate::{
+    setting::SettingWrapper, Extension, Extensions, Result, Server, Setting,
+};
 use actix::Addr;
 use actix_cors::Cors;
 use actix_web::{
@@ -12,6 +14,9 @@ use std::{path::Path, sync::Arc};
 use tracing::info;
 
 pub mod route {
+    use std::net::IpAddr;
+    use std::str::FromStr;
+
     use crate::{App, Session};
     use actix_web::http::header::{ACCEPT, LOCATION, UPGRADE};
     use actix_web::{web, Error, HttpRequest, HttpResponse};
@@ -50,7 +55,18 @@ pub mod route {
         let max_size = r.limitation.max_message_length;
         drop(r);
 
-        let session = Session::new(ip.unwrap_or_default(), data);
+        let ip_addr = IpAddr::from_str(&ip.as_deref().unwrap_or_default())
+            .expect("valid ip");
+        let host_info = public_ip_address::perform_lookup(Some(ip_addr)).await;
+        let zone = {
+            if let Ok(zone) = host_info {
+                zone.country_code.unwrap_or("Unknown".to_owned())
+            } else {
+                "Unknown".to_owned()
+            }
+        };
+
+        let session = Session::new(ip.unwrap_or_default(), zone, data);
 
         // ws::start(session, &req, stream)
         // The default max frame size is 60k, change from setting.

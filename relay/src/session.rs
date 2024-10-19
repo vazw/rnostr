@@ -15,6 +15,7 @@ use ws::Message;
 
 pub struct Session {
     ip: String,
+    zone: String,
 
     /// unique session id
     id: usize,
@@ -66,7 +67,11 @@ impl Session {
         &self.ip
     }
 
-    pub fn new(ip: String, app: web::Data<App>) -> Session {
+    pub fn zone(&self) -> &String {
+        &self.zone
+    }
+
+    pub fn new(ip: String, zone: String, app: web::Data<App>) -> Session {
         let setting = app.setting.read();
         let heartbeat_timeout = setting.network.heartbeat_timeout.into();
         let heartbeat_interval = setting.network.heartbeat_interval.into();
@@ -74,6 +79,7 @@ impl Session {
         Self {
             id: 0,
             ip,
+            zone,
             hb: Instant::now(),
             server: app.server.clone(),
             heartbeat_timeout,
@@ -122,13 +128,18 @@ impl Session {
         }
     }
 
-    fn handle_message(&mut self, text: String, ctx: &mut ws::WebsocketContext<Self>) {
+    fn handle_message(
+        &mut self,
+        text: String,
+        ctx: &mut ws::WebsocketContext<Self>,
+    ) {
         let msg = serde_json::from_str::<IncomingMessage>(&text);
         match msg {
             Ok(msg) => {
                 if let Some(cmd) = msg.known_command() {
                     // only insert known command metrics
-                    counter!("nostr_relay_message_total", "command" => cmd).increment(1);
+                    counter!("nostr_relay_message_total", "command" => cmd)
+                        .increment(1);
                 }
 
                 let mut msg = ClientMessage::new(self.id, text, msg);
@@ -163,7 +174,10 @@ impl Session {
                 };
             }
             Err(err) => {
-                ctx.text(OutgoingMessage::notice(&format!("json error: {}", err)));
+                ctx.text(OutgoingMessage::notice(&format!(
+                    "json error: {}",
+                    err
+                )));
             }
         };
     }
@@ -233,7 +247,11 @@ impl Actor for Session {
 
 /// Handler for `ws::Message`
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+    fn handle(
+        &mut self,
+        msg: Result<ws::Message, ws::ProtocolError>,
+        ctx: &mut Self::Context,
+    ) {
         // Text will log after processing
         if !matches!(msg, Ok(Message::Text(_)) | Ok(Message::Continuation(_))) {
             debug!("Session message {} {} {:?}", self.id, self.ip, msg);
@@ -242,10 +260,15 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
             Err(err) => {
                 match err {
                     ws::ProtocolError::Overflow => {
-                        ctx.text(OutgoingMessage::notice("payload reached size limit."));
+                        ctx.text(OutgoingMessage::notice(
+                            "payload reached size limit.",
+                        ));
                     }
                     _ => {
-                        debug!("Session error {} {} {:?}", self.id, self.ip, err);
+                        debug!(
+                            "Session error {} {} {:?}",
+                            self.id, self.ip, err
+                        );
                         counter!("nostr_relay_session_stop_total", "reason" => "message error")
                             .increment(1);
                         ctx.stop();
@@ -284,7 +307,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                     self.cont = Some(bytes);
                 }
                 Item::FirstBinary(_) => {
-                    ctx.text(OutgoingMessage::notice("Not support binary message"));
+                    ctx.text(OutgoingMessage::notice(
+                        "Not support binary message",
+                    ));
                 }
                 Item::Continue(buf) => {
                     if let Some(bytes) = &mut self.cont {
@@ -295,7 +320,10 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                     if let Some(mut bytes) = self.cont.take() {
                         bytes.extend_from_slice(&buf);
                         if let Ok(text) = String::from_utf8(bytes.to_vec()) {
-                            debug!("Session text {} {} {}", self.id, self.ip, text);
+                            debug!(
+                                "Session text {} {} {}",
+                                self.id, self.ip, text
+                            );
                             self.handle_message(text, ctx);
                         }
                     }
@@ -344,8 +372,10 @@ mod tests {
             let data = create_test_app("session").unwrap();
             {
                 let mut w = data.setting.write();
-                w.network.heartbeat_interval = Duration::from_secs(1).try_into().unwrap();
-                w.network.heartbeat_timeout = Duration::from_secs(20).try_into().unwrap();
+                w.network.heartbeat_interval =
+                    Duration::from_secs(1).try_into().unwrap();
+                w.network.heartbeat_timeout =
+                    Duration::from_secs(20).try_into().unwrap();
             }
             data.web_app()
         });
@@ -372,8 +402,10 @@ mod tests {
             let data = create_test_app("session").unwrap();
             {
                 let mut w = data.setting.write();
-                w.network.heartbeat_interval = Duration::from_secs(1).try_into().unwrap();
-                w.network.heartbeat_timeout = Duration::from_secs(2).try_into().unwrap();
+                w.network.heartbeat_interval =
+                    Duration::from_secs(1).try_into().unwrap();
+                w.network.heartbeat_timeout =
+                    Duration::from_secs(2).try_into().unwrap();
             }
             data.web_app()
         });
