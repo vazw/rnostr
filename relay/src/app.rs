@@ -60,7 +60,9 @@ pub mod route {
         let host_info = public_ip_address::perform_lookup(Some(ip_addr)).await;
         let zone = {
             if let Ok(zone) = host_info {
-                zone.country_code.unwrap_or("Unknown".to_owned())
+                zone.country_code
+                    .unwrap_or("Unknown".to_owned())
+                    .to_lowercase()
             } else {
                 "Unknown".to_owned()
             }
